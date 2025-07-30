@@ -20,10 +20,15 @@ def scrape_cmswire():
     response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    articles = soup.select('li.ArticleListingItem')[:5]  # Adjust if CMSWire changes its structure
+    # Try newer structure first
+    articles = soup.select('li.ArticleListingItem')
+    if not articles:
+        # Fallback in case CMSWire uses old class names
+        articles = soup.select('.ArticleListingList li')
+
     results = []
 
-    for item in articles:
+    for item in articles[:5]:  # Only grab top 5
         title_tag = item.find('h2')
         if not title_tag:
             continue
@@ -53,6 +58,7 @@ def scrape_cmswire():
             ""   # AI Score
         ])
     return results
+
 
 # Append rows to Google Sheet
 def write_to_sheet(data, sheet_name="Research"):
