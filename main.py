@@ -24,36 +24,21 @@ def scrape_cmswire():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto("https://www.cmswire.com/digital-asset-management/", timeout=60000)
-        page.wait_for_timeout(5000)  # wait for JS to render
+        page.wait_for_timeout(5000)
 
-        # Extract the articles
-        articles = page.locator("li.ArticleListingItem").all()[:5]
+        print("🕵️ Previewing page content to debug selectors...")
 
-        for article in articles:
+        # Try generic article preview first
+        article_h2s = page.locator("h2").all()
+        print(f"📝 Found {len(article_h2s)} <h2> tags:")
+        for i, h2 in enumerate(article_h2s[:5]):
             try:
-                title = article.locator("h2").inner_text()
-                link = article.locator("h2 a").get_attribute("href")
-                full_link = f"https://www.cmswire.com{link}" if link and not link.startswith("http") else link
-                summary = article.locator("p").inner_text()
-                date_text = article.locator("time").get_attribute("datetime")[:10] if article.locator("time") else datetime.today().strftime('%Y-%m-%d')
+                print(f"{i+1}. {h2.inner_text()}")
+            except:
+                continue
 
-                results.append([
-                    title,
-                    full_link,
-                    date_text,
-                    summary,
-                    "",  # Author
-                    "",  # Notes
-                    "CMSWire",
-                    "Digital Asset Management",
-                    "",  # Tags
-                    ""   # AI Score
-                ])
-            except Exception as e:
-                print(f"❌ Error parsing article: {e}")
         browser.close()
     return results
-
 
 # Append rows to Google Sheet
 def write_to_sheet(data, sheet_name="Research"):
