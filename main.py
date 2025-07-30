@@ -19,6 +19,9 @@ def scrape_cmswire():
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.text, 'html.parser')
+    print("🕵️ Checking soup preview:")
+    print(soup.prettify()[:2000])  # only first 2000 characters
+
 
     # Try newer structure first
     articles = soup.select('li.ArticleListingItem')
