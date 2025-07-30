@@ -14,52 +14,44 @@ creds = service_account.Credentials.from_service_account_info(SERVICE_ACCOUNT_IN
 service = build('sheets', 'v4', credentials=creds)
 
 # Scrape CMSWire for DAM articles
+from playwright.sync_api import sync_playwright
+
 def scrape_cmswire():
-    url = "https://www.cmswire.com/digital-asset-management/"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    print("🕵️ Checking soup preview:")
-    print(soup.prettify()[:2000])  # only first 2000 characters
-
-
-    # Try newer structure first
-    articles = soup.select('li.ArticleListingItem')
-    if not articles:
-        # Fallback in case CMSWire uses old class names
-        articles = soup.select('.ArticleListingList li')
-
+    print("📡 Using Playwright to scrape CMSWire...")
     results = []
 
-    for item in articles[:5]:  # Only grab top 5
-        title_tag = item.find('h2')
-        if not title_tag:
-            continue
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto("https://www.cmswire.com/digital-asset-management/", timeout=60000)
+        page.wait_for_timeout(5000)  # wait for JS to render
 
-        title = title_tag.get_text(strip=True)
-        link_tag = title_tag.find('a')
-        link = link_tag['href'] if link_tag else ''
-        if not link.startswith("http"):
-            link = f"https://www.cmswire.com{link}"
+        # Extract the articles
+        articles = page.locator("li.ArticleListingItem").all()[:5]
 
-        date_tag = item.find('time')
-        date_text = date_tag.get('datetime')[:10] if date_tag else datetime.today().strftime('%Y-%m-%d')
+        for article in articles:
+            try:
+                title = article.locator("h2").inner_text()
+                link = article.locator("h2 a").get_attribute("href")
+                full_link = f"https://www.cmswire.com{link}" if link and not link.startswith("http") else link
+                summary = article.locator("p").inner_text()
+                date_text = article.locator("time").get_attribute("datetime")[:10] if article.locator("time") else datetime.today().strftime('%Y-%m-%d')
 
-        summary_tag = item.find('p')
-        summary = summary_tag.get_text(strip=True) if summary_tag else "No summary available."
-
-        results.append([
-            title,
-            link,
-            date_text,
-            summary,
-            "",  # Author
-            "",  # Notes
-            "CMSWire",  # Source
-            "Digital Asset Management",  # Topic
-            "",  # Tags
-            ""   # AI Score
-        ])
+                results.append([
+                    title,
+                    full_link,
+                    date_text,
+                    summary,
+                    "",  # Author
+                    "",  # Notes
+                    "CMSWire",
+                    "Digital Asset Management",
+                    "",  # Tags
+                    ""   # AI Score
+                ])
+            except Exception as e:
+                print(f"❌ Error parsing article: {e}")
+        browser.close()
     return results
 
 
