@@ -15,6 +15,7 @@ service = build('sheets', 'v4', credentials=creds)
 
 # Scrape CMSWire for DAM articles
 from playwright.sync_api import sync_playwright
+from datetime import datetime
 
 def scrape_cmswire():
     print("📡 Using Playwright to scrape CMSWire...")
@@ -24,21 +25,45 @@ def scrape_cmswire():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto("https://www.cmswire.com/digital-asset-management/", timeout=60000)
-        page.wait_for_timeout(5000)
+        page.wait_for_timeout(5000)  # Give JS time to load
 
-        print("🕵️ Previewing page content to debug selectors...")
+        # Use updated selector for article cards
+        cards = page.locator("article").all()
 
-        # Try generic article preview first
-        article_h2s = page.locator("h2").all()
-        print(f"📝 Found {len(article_h2s)} <h2> tags:")
-        for i, h2 in enumerate(article_h2s[:5]):
+        print(f"🧾 Found {len(cards)} article cards")
+        for card in cards[:5]:
             try:
-                print(f"{i+1}. {h2.inner_text()}")
-            except:
+                title = card.locator("h3").inner_text()
+                link = card.locator("a").first.get_attribute("href")
+                if not link.startswith("http"):
+                    link = "https://www.cmswire.com" + link
+
+                date_el = card.locator("time")
+                date_text = date_el.get_attribute("datetime") if date_el.count() > 0 else datetime.now().strftime("%Y-%m-%d")
+
+                summary_el = card.locator("p")
+                summary = summary_el.inner_text() if summary_el.count() > 0 else "No summary"
+
+                row = [
+                    title.strip(),
+                    link.strip(),
+                    date_text.strip(),
+                    summary.strip(),
+                    "",  # Author
+                    "",  # Notes
+                    "CMSWire",
+                    "Digital Asset Management",
+                    "",  # Tags
+                    ""   # AI Score placeholder
+                ]
+                results.append(row)
+            except Exception as e:
+                print(f"❌ Error parsing card: {e}")
                 continue
 
         browser.close()
     return results
+
 
 # Append rows to Google Sheet
 def write_to_sheet(data, sheet_name="Research"):
