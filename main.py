@@ -20,44 +20,55 @@ from datetime import datetime
 def scrape_cmswire():
     print("📡 Using Playwright to scrape CMSWire...")
     results = []
+    seen_links = set()
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto("https://www.cmswire.com/digital-asset-management/", timeout=60000)
-        page.wait_for_timeout(5000)  # allow full JS render
+        page.wait_for_timeout(6000)  # Let JS finish rendering
 
         cards = page.locator("article").all()
         print(f"🧾 Found {len(cards)} article cards")
 
-        for i, card in enumerate(cards[:5]):
+        for i, card in enumerate(cards[:12]):  # Top 12 max
             try:
-                title = card.locator("a").nth(0).text_content().strip()
-                link = card.locator("a").nth(0).get_attribute("href")
+                # Skip sponsored or duplicated articles
+                if "sponsored" in card.inner_html().lower():
+                    continue
+
+                title_el = card.locator("h3").nth(0)
+                link_el = card.locator("a").nth(0)
+                date_el = card.locator("time").nth(0)
+                summary_el = card.locator("p").nth(0)
+
+                title = title_el.text_content().strip() if title_el else "Untitled"
+                link = link_el.get_attribute("href")
                 if not link.startswith("http"):
                     link = "https://www.cmswire.com" + link
 
-                try:
-                    date = card.locator("time").nth(0).get_attribute("datetime")
-                except PlaywrightTimeoutError:
-                    date = datetime.now().strftime("%Y-%m-%d")
+                if link in seen_links:
+                    continue  # skip duplicates
+                seen_links.add(link)
 
-                try:
-                    summary = card.locator("p").nth(0).text_content().strip()
-                except PlaywrightTimeoutError:
-                    summary = "No summary"
+                date = date_el.get_attribute("datetime") if date_el else datetime.now().strftime('%Y-%m-%d')
+                summary = summary_el.text_content().strip() if summary_el else "No summary"
+
+                # Clean title
+                for bad_word in ["Sponsored Article", "Feature24", "Digital Asset Management"]:
+                    title = title.replace(bad_word, "").strip()
 
                 row = [
                     title,
                     link,
-                    date,
+                    date[:10],
                     summary,
                     "",  # Author
                     "",  # Notes
                     "CMSWire",
                     "Digital Asset Management",
                     "",  # Tags
-                    ""   # AI Score placeholder
+                    ""   # AI Score
                 ]
                 results.append(row)
 
@@ -66,7 +77,6 @@ def scrape_cmswire():
                 continue
 
         browser.close()
-
     return results
 
 
