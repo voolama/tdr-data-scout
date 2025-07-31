@@ -14,50 +14,51 @@ creds = service_account.Credentials.from_service_account_info(SERVICE_ACCOUNT_IN
 service = build('sheets', 'v4', credentials=creds)
 
 # Scrape Martech for DAM articles
-def scrape_martech():
-    print("📡 Scraping MarTech.org...")
-    url = "https://martech.org/category/digital-asset-management/"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    res = requests.get(url, headers=headers)
-    soup = BeautifulSoup(res.text, 'html.parser')
+from playwright.sync_api import sync_playwright
 
-    articles = soup.select("article")[:10]  # Top 10 entries
+def scrape_martech():
+    print("📡 Scraping MarTech.org with Playwright...")
     results = []
 
-    for item in articles:
-        try:
-            title_tag = item.find("h2", class_="entry-title")
-            title = title_tag.get_text(strip=True)
-            link = title_tag.find("a")["href"]
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.goto("https://martech.org/category/digital-asset-management/", timeout=60000)
+        page.wait_for_timeout(3000)  # wait for JS content
 
-            date_tag = item.find("time", class_="entry-date")
-            date = date_tag["datetime"][:10] if date_tag else datetime.now().strftime('%Y-%m-%d')
+        articles = page.locator("article").all()
 
-            summary_tag = item.find("div", class_="entry-excerpt") or item.find("p")
-            summary = summary_tag.get_text(strip=True) if summary_tag else "No summary available"
+        print(f"🧾 Found {len(articles)} article cards")
 
-            author_tag = item.find("span", class_="author-name")
-            author = author_tag.get_text(strip=True) if author_tag else ""
+        for i, article in enumerate(articles[:10]):  # top 10
+            try:
+                title = article.locator("h2 a").first.inner_text(timeout=3000)
+                url = article.locator("h2 a").first.get_attribute("href")
+                date = article.locator("time").first.get_attribute("datetime")[:10]
+                summary = article.locator("div.entry-excerpt, p").first.inner_text(timeout=2000)
+                author = article.locator("span.author-name").first.inner_text(timeout=2000)
 
-            row = [
-                title,
-                link,
-                date,
-                summary,
-                author,
-                "",  # Notes
-                "MarTech.org",
-                "Digital Asset Management",
-                "",  # Tags
-                ""   # AI Score placeholder
-            ]
-            results.append(row)
+                row = [
+                    title.strip(),
+                    url,
+                    date,
+                    summary.strip(),
+                    author.strip() if author else "",
+                    "",  # Notes
+                    "MarTech.org",
+                    "Digital Asset Management",
+                    "",  # Tags
+                    ""   # AI Score placeholder
+                ]
+                results.append(row)
+            except Exception as e:
+                print(f"❌ Error parsing article {i}: {e}")
+                continue
 
-        except Exception as e:
-            print(f"❌ Error parsing article: {e}")
-            continue
+        browser.close()
 
     return results
+
 
 
 
