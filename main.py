@@ -14,7 +14,7 @@ creds = service_account.Credentials.from_service_account_info(SERVICE_ACCOUNT_IN
 service = build('sheets', 'v4', credentials=creds)
 
 # Scrape CMSWire for DAM articles
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 from datetime import datetime
 
 def scrape_cmswire():
@@ -25,30 +25,33 @@ def scrape_cmswire():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto("https://www.cmswire.com/digital-asset-management/", timeout=60000)
-        page.wait_for_timeout(5000)  # Give JS time to load
+        page.wait_for_timeout(5000)  # allow full JS render
 
-        # Use updated selector for article cards
         cards = page.locator("article").all()
-
         print(f"🧾 Found {len(cards)} article cards")
-        for card in cards[:5]:
+
+        for i, card in enumerate(cards[:5]):
             try:
-                title = card.locator("h3").inner_text()
-                link = card.locator("a").first.get_attribute("href")
+                title = card.locator("a").nth(0).text_content().strip()
+                link = card.locator("a").nth(0).get_attribute("href")
                 if not link.startswith("http"):
                     link = "https://www.cmswire.com" + link
 
-                date_el = card.locator("time")
-                date_text = date_el.get_attribute("datetime") if date_el.count() > 0 else datetime.now().strftime("%Y-%m-%d")
+                try:
+                    date = card.locator("time").nth(0).get_attribute("datetime")
+                except PlaywrightTimeoutError:
+                    date = datetime.now().strftime("%Y-%m-%d")
 
-                summary_el = card.locator("p")
-                summary = summary_el.inner_text() if summary_el.count() > 0 else "No summary"
+                try:
+                    summary = card.locator("p").nth(0).text_content().strip()
+                except PlaywrightTimeoutError:
+                    summary = "No summary"
 
                 row = [
-                    title.strip(),
-                    link.strip(),
-                    date_text.strip(),
-                    summary.strip(),
+                    title,
+                    link,
+                    date,
+                    summary,
                     "",  # Author
                     "",  # Notes
                     "CMSWire",
@@ -57,11 +60,13 @@ def scrape_cmswire():
                     ""   # AI Score placeholder
                 ]
                 results.append(row)
+
             except Exception as e:
-                print(f"❌ Error parsing card: {e}")
+                print(f"❌ Error parsing card {i}: {e}")
                 continue
 
         browser.close()
+
     return results
 
 
